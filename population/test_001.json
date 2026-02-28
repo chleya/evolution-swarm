@@ -1,0 +1,29 @@
+{
+  "variant_id": "test_001",
+  "generation": 1,
+  "parent_ids": [
+    "seed_001"
+  ],
+  "genome": {
+    "cognitive": {
+      "role": "explorer",
+      "prompt": "你是一个勇敢的探索者",
+      "tools": [
+        "browser",
+        "read"
+      ]
+    },
+    "social": {
+      "style": "direct",
+      "cooperation": 0.7
+    },
+    "adaptive": {
+      "learning_rate": 0.1,
+      "explore_ratio": 0.6
+    }
+  },
+  "phenotype": {
+    "fitness": 0.85,
+    "tasks_completed": 10
+  }
+}
