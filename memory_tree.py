@@ -28,6 +28,7 @@ class MemoryNode:
     last_accessed: str = None
     decay_factor: float = 0.95  # 衰减因子
     metadata: Dict = None
+    status: str = "active"  # active / archived  # 新增：状态标记
     
     def __post_init__(self):
         if self.children_ids is None:
@@ -122,13 +123,41 @@ class MemoryTree:
         """获取节点"""
         return self.nodes.get(node_id)
     
-    def search_by_content(self, keyword: str) -> List[MemoryNode]:
-        """按内容搜索"""
+    def search_by_content(self, keyword: str, include_archived: bool = True) -> List[MemoryNode]:
+        """按内容搜索
+        
+        Args:
+            keyword: 搜索关键词
+            include_archived: 是否包含归档记忆
+        """
         results = []
         for node in self.nodes.values():
             if keyword.lower() in node.content.lower():
-                results.append(node)
+                # 根据状态过滤
+                if node.status == "active" or include_archived:
+                    results.append(node)
         return results
+    
+    def get_archived_memories(self) -> List[MemoryNode]:
+        """获取归档记忆"""
+        return [n for n in self.nodes.values() if n.status == "archived"]
+    
+    def reactivate_memory(self, node_id: str) -> bool:
+        """重新激活归档记忆
+        
+        重新访问时自动激活
+        """
+        if node_id in self.nodes:
+            if self.nodes[node_id].status == "archived":
+                self.nodes[node_id].status = "active"
+                # 提升置信度
+                self.nodes[node_id].confidence = min(1.0, self.nodes[node_id].confidence + 0.3)
+                print(f"[Memory Tree] Reactivated memory: {node_id[:8]}")
+            # 无论什么状态，访问都会提升置信度
+            self.nodes[node_id].access_count += 1
+            self.nodes[node_id].last_accessed = datetime.now().isoformat()
+            return True
+        return False
     
     def get_path_to_root(self, node_id: str) -> List[MemoryNode]:
         """获取到根节点的路径"""
@@ -158,19 +187,26 @@ class MemoryTree:
             self.nodes[node_id].confidence = max(0, min(1.0, new_confidence))
     
     def _prune_low_confidence(self):
-        """剪枝低置信度节点"""
-        # 按置信度排序
-        sorted_nodes = sorted(
-            self.nodes.items(),
-            key=lambda x: x[1].calculate_confidence()
-        )
+        """标记低置信度节点为归档，不删除"""
+        archived_count = 0
         
-        # 删除最低置信度的节点
-        nodes_to_remove = len(self.nodes) - self.config.max_nodes + 100
+        for node_id, node in self.nodes.items():
+            if node_id == self.root_id:
+                continue  # 不处理根节点
+            
+            # 计算当前置信度
+            current_conf = node.calculate_confidence()
+            
+            # 如果低于阈值，标记为归档
+            if current_conf < self.config.prune_threshold:
+                node.status = "archived"
+                archived_count += 1
         
-        for node_id, node in sorted_nodes[:nodes_to_remove]:
-            if node_id != self.root_id:  # 不删除根节点
-                self._delete_node(node_id)
+        if archived_count > 0:
+            print(f"[Memory Tree] Archived {archived_count} low-confidence nodes (not deleted)")
+        
+        # 不再真正删除任何节点！
+        # 所有记忆都会被保留，只是标记为 archived 状态
     
     def _delete_node(self, node_id: str):
         """删除节点"""
@@ -194,8 +230,14 @@ class MemoryTree:
         """获取树统计"""
         confidences = [n.calculate_confidence() for n in self.nodes.values()]
         
+        active_count = sum(1 for n in self.nodes.values() if n.status == "active")
+        archived_count = sum(1 for n in self.nodes.values() if n.status == "archived")
+        
         return {
             'total_nodes': len(self.nodes),
+            'active_nodes': active_count,
+            'archived_nodes': archived_count,
+            'avg_confidence': sum(confidences) / len(confidences) if confidences else 0,
             'avg_confidence': sum(confidences) / len(confidences) if confidences else 0,
             'max_confidence': max(confidences) if confidences else 0,
             'min_confidence': min(confidences) if confidences else 0,
